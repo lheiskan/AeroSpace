@@ -276,8 +276,14 @@ func parseBindings(_ raw: TOMLValueConvertible, _ backtrace: TomlBacktrace, _ er
 func parseBinding(_ raw: String, _ backtrace: TomlBacktrace, _ mapping: KeyMapping) -> ParsedToml<Hotkey> {
     let rawKeys = raw.split(separator: "-")
     let modifiers: ParsedToml<CGEventFlags> = rawKeys.dropLast()
-        .mapAllOrFailure {
-            modifiersMap[String($0)].orFailure(.semantic(backtrace, "Can't parse modifiers in '\(raw)' binding"))
+        .mapAllOrFailure { modifierSlice in
+            let modifier = String(modifierSlice)
+            // First check if it's a modifier alias
+            if let aliasedFlags = mapping.resolveModifiers(modifier) {
+                return .success(aliasedFlags)
+            }
+            // Otherwise check standard modifiers
+            return modifiersMap[modifier].orFailure(.semantic(backtrace, "Can't parse modifiers in '\(raw)' binding"))
         }
         .map { CGEventFlags($0) }
 

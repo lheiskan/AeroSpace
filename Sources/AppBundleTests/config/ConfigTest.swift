@@ -440,8 +440,8 @@ final class ConfigTest: XCTestCase {
         )
         assertEquals(errors.descriptions, [])
         assertEquals(config.keyMapping, KeyMapping(preset: .qwerty, rawKeyNotationToKeyCode: [
-            "q": keyNotationToKeyCode["q"]!,
-            "unicorn": keyNotationToKeyCode["u"]!,
+            "q": .keyCode(keyNotationToKeyCode["q"]!),
+            "unicorn": .keyCode(keyNotationToKeyCode["u"]!),
         ]))
         let binding = HotkeyBinding(
             hotkey: Hotkey(modifiers: .maskAlternate, key: .keyCode(keyNotationToKeyCode["u"]!, symbol: "unicorn")),
@@ -494,5 +494,51 @@ final class ConfigTest: XCTestCase {
             commands: [WorkspaceCommand(args: WorkspaceCmdArgs(target: .direct(.parse("1").getOrDie())))],
         )
         assertEquals(symbolConfig.modes[mainModeId]?.bindings, [symbolBinding])
+
+        // Test modifier aliases
+        let (aliasConfig, aliasErrors) = parseConfig(
+            """
+            [key-mapping.key-notation-to-key-code]
+                hyper = 'ctrl-alt-shift-cmd'
+                meh = 'ctrl-alt-shift'
+
+            [mode.main.binding]
+                hyper-h = 'focus left'
+                meh-j = 'focus down'
+            """,
+        )
+        assertEquals(aliasErrors, [])
+        let hyperFlags = CGEventFlags([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+        let mehFlags = CGEventFlags([.maskControl, .maskAlternate, .maskShift])
+        assertEquals(aliasConfig.keyMapping, KeyMapping(
+            preset: .qwerty,
+            rawKeyNotationToKeyCode: [
+                "hyper": .modifiers(hyperFlags),
+                "meh": .modifiers(mehFlags),
+            ],
+            matchKeyEventBy: .keyCode
+        ))
+        let hyperBinding = HotkeyBinding(
+            hotkey: Hotkey(modifiers: hyperFlags, key: .keyCode(keyNotationToKeyCode["h"]!, symbol: "h")),
+            commands: [FocusCommand.new(direction: .left)],
+        )
+        let mehBinding = HotkeyBinding(
+            hotkey: Hotkey(modifiers: mehFlags, key: .keyCode(keyNotationToKeyCode["j"]!, symbol: "j")),
+            commands: [FocusCommand.new(direction: .down)],
+        )
+        assertEquals(aliasConfig.modes[mainModeId]?.bindings, [hyperBinding, mehBinding])
+
+        // Test invalid modifier alias errors
+        let (_, invalidAliasErrors) = parseConfig(
+            """
+            [key-mapping.key-notation-to-key-code]
+                'hyper-key' = 'ctrl-alt'
+                invalid = 'foo-bar'
+            """,
+        )
+        assertEquals(Set(invalidAliasErrors.descriptions), Set([
+            "key-mapping.key-notation-to-key-code: 'hyper-key' is invalid key notation",
+            "key-mapping.key-notation-to-key-code.invalid: 'foo' is not a valid modifier in 'foo-bar'",
+        ]))
     }
 }
